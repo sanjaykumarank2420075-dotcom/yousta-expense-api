@@ -361,3 +361,34 @@ def update_expense(
             "status": existing_expense.status
         }
     }
+
+@app.delete("/expenses/{expense_id}")
+def delete_expense(
+    expense_id: str,
+    db: Session = Depends(get_db)
+):
+    existing_expense = (
+        db.query(Expense)
+        .filter(Expense.expense_id == expense_id)
+        .first()
+    )
+
+    if not existing_expense:
+        raise HTTPException(
+            status_code=404,
+            detail="Expense not found"
+        )
+
+    if existing_expense.status not in ["RECORDED", "REJECTED"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Expense cannot be deleted in its current status"
+        )
+
+    db.delete(existing_expense)
+    db.commit()
+
+    return {
+        "message": "Expense deleted successfully",
+        "expense_id": expense_id
+    }
