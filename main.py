@@ -1,0 +1,149 @@
+from fastapi import FastAPI, Depends, HTTPException
+from sqlalchemy.orm import Session
+from uuid import uuid4
+
+from database import Base, engine, get_db
+from models import Employee, Trip, Expense
+from schemas import ExpenseCreate
+
+
+app = FastAPI(
+    title="Yousta Travel & Expense API",
+    version="1.0.0"
+)
+
+
+Base.metadata.create_all(bind=engine)
+
+
+@app.get("/")
+def root():
+    return {
+        "message": "Yousta Travel & Expense API is running"
+    }
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "healthy"
+    }
+
+
+@app.get("/trips/open")
+def get_open_trips(
+    employee_id: str,
+    db: Session = Depends(get_db)
+):
+
+    trips = (
+        db.query(Trip)
+        .filter(
+            Trip.employee_id == employee_id,
+            Trip.status == "OPEN"
+        )
+        .all()
+    )
+
+    return {
+        "employee_id": employee_id,
+        "count": len(trips),
+        "trips": [
+            {
+                "trip_id": trip.trip_id,
+                "destination": trip.destination,
+                "start_date": trip.start_date,
+                "end_date": trip.end_date,
+                "purpose": trip.purpose,
+                "status": trip.status
+            }
+            for trip in trips
+        ]
+    }
+
+
+@app.post("/expenses")
+def add_expense(
+    expense: ExpenseCreate,
+    db: Session = Depends(get_db)
+):
+
+    # 1. Check employee
+    employee = (
+        db.query(Employee)
+        .filter(
+            Employee.employee_id == expense.employee_id
+        )
+        .first()
+    )
+
+    if not employee:
+        raise HTTPException(
+            status_code=404,
+            detail="Employee not found"
+        )
+
+
+    # 2. Check trip belongs to employee
+    trip = (
+        db.query(Trip)
+        .filter(
+            Trip.trip_id == expense.trip_id,
+            Trip.employee_id == expense.employee_id
+        )
+        .first()
+    )
+
+    if not trip:
+        raise HTTPException(
+            status_code=404,
+            detail="Trip not found for this employee"
+        )
+
+
+    # 3. Check trip is OPEN
+    if trip.status != "OPEN":
+        raise HTTPException(
+            status_code=400,
+            detail="Expense can only be added to an OPEN trip"
+        )
+
+
+    # 4. Create expense
+    expense_id = (
+        f"EXP-{uuid4().hex[:8].upper()}"
+    )
+
+    new_expense = Expense(
+        expense_id=expense_id,
+        employee_id=expense.employee_id,
+        trip_id=expense.trip_id,
+        category=expense.category,
+        amount=expense.amount,
+        currency=expense.currency,
+        expense_date=expense.expense_date,
+        description=expense.description,
+        status="RECORDED"
+    )
+
+
+    db.add(new_expense)
+    db.commit()
+    db.refresh(new_expense)
+
+
+    return {
+        "message": "Expense added successfully",
+
+        "expense": {
+            "expense_id": new_expense.expense_id,
+            "employee_id": new_expense.employee_id,
+            "trip_id": new_expense.trip_id,
+            "category": new_expense.category,
+            "amount": new_expense.amount,
+            "currency": new_expense.currency,
+            "expense_date": new_expense.expense_date,
+            "description": new_expense.description,
+            "status": new_expense.status
+        }
+    }
