@@ -189,3 +189,39 @@ def seed_database(db: Session = Depends(get_db)):
     return {
         "message": "Seed data created successfully"
     }
+
+@app.get("/expenses")
+def get_expenses(
+    employee_id: str,
+    trip_id: str | None = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(Expense).filter(
+        Expense.employee_id == employee_id
+    )
+
+    if trip_id:
+        query = query.filter(
+            Expense.trip_id == trip_id
+        )
+
+    expenses = query.all()
+
+    return {
+        "employee_id": employee_id,
+        "trip_id": trip_id,
+        "count": len(expenses),
+        "expenses": [
+            {
+                "expense_id": expense.expense_id,
+                "trip_id": expense.trip_id,
+                "category": expense.category,
+                "amount": expense.amount,
+                "currency": expense.currency,
+                "expense_date": expense.expense_date,
+                "description": expense.description,
+                "status": expense.status
+            }
+            for expense in expenses
+        ]
+    }
