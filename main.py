@@ -5,6 +5,10 @@ from uuid import uuid4
 from database import Base, engine, get_db
 from models import Employee, Trip, Expense
 from schemas import ExpenseCreate
+from sqlalchemy import func
+from pydantic import BaseModel
+
+
 
 
 app = FastAPI(
@@ -12,6 +16,12 @@ app = FastAPI(
     version="1.0.0"
 )
 
+class ExpenseUpdate(BaseModel):
+    category: str | None = None
+    amount: float | None = None
+    currency: str | None = None
+    expense_date: str | None = None
+    description: str | None = None
 
 Base.metadata.create_all(bind=engine)
 
@@ -251,4 +261,103 @@ def get_total_expense(
         "total_expense": total,
         "currency": expenses[0].currency if expenses else "INR",
         "expense_count": len(expenses)
+    }
+
+@app.get("/expenses/summary")
+def get_expense_summary(
+    employee_id: str,
+    trip_id: str | None = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(
+        Expense.category,
+        Expense.currency,
+        func.sum(Expense.amount).label("total_amount"),
+        func.count(Expense.id).label("expense_count")
+    ).filter(
+        Expense.employee_id == employee_id
+    )
+
+    if trip_id:
+        query = query.filter(
+            Expense.trip_id == trip_id
+        )
+
+    results = (
+        query
+        .group_by(Expense.category, Expense.currency)
+        .all()
+    )
+
+    summary = []
+
+    for row in results:
+        summary.append({
+            "category": row.category,
+            "currency": row.currency,
+            "total_amount": float(row.total_amount),
+            "expense_count": row.expense_count
+        })
+
+    return {
+        "employee_id": employee_id,
+        "trip_id": trip_id,
+        "summary": summary
+    }
+
+@app.put("/expenses/{expense_id}")
+def update_expense(
+    expense_id: str,
+    expense: ExpenseUpdate,
+    db: Session = Depends(get_db)
+):
+    existing_expense = (
+        db.query(Expense)
+        .filter(Expense.expense_id == expense_id)
+        .first()
+    )
+
+    if not existing_expense:
+        raise HTTPException(
+            status_code=404,
+            detail="Expense not found"
+        )
+
+    if existing_expense.status not in ["RECORDED", "REJECTED"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Expense cannot be updated in its current status"
+        )
+
+    if expense.category is not None:
+        existing_expense.category = expense.category
+
+    if expense.amount is not None:
+        existing_expense.amount = expense.amount
+
+    if expense.currency is not None:
+        existing_expense.currency = expense.currency
+
+    if expense.expense_date is not None:
+        existing_expense.expense_date = expense.expense_date
+
+    if expense.description is not None:
+        existing_expense.description = expense.description
+
+    db.commit()
+    db.refresh(existing_expense)
+
+    return {
+        "message": "Expense updated successfully",
+        "expense": {
+            "expense_id": existing_expense.expense_id,
+            "employee_id": existing_expense.employee_id,
+            "trip_id": existing_expense.trip_id,
+            "category": existing_expense.category,
+            "amount": existing_expense.amount,
+            "currency": existing_expense.currency,
+            "expense_date": existing_expense.expense_date,
+            "description": existing_expense.description,
+            "status": existing_expense.status
+        }
     }
