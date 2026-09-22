@@ -147,3 +147,45 @@ def add_expense(
             "status": new_expense.status
         }
     }
+
+@app.post("/setup/seed")
+def seed_database(db: Session = Depends(get_db)):
+
+    existing_employee = (
+        db.query(Employee)
+        .filter(Employee.employee_id == "EMP001")
+        .first()
+    )
+
+    if not existing_employee:
+        employee = Employee(
+            employee_id="EMP001",
+            name="Sanjay Kumar",
+            email="sanjay@yousta.com",
+            grade="E2"
+        )
+        db.add(employee)
+
+    existing_trip = (
+        db.query(Trip)
+        .filter(Trip.trip_id == "TRIP001")
+        .first()
+    )
+
+    if not existing_trip:
+        trip = Trip(
+            trip_id="TRIP001",
+            employee_id="EMP001",
+            destination="Bangalore",
+            start_date="2026-09-20",
+            end_date="2026-09-23",
+            purpose="Client Meeting",
+            status="OPEN"
+        )
+        db.add(trip)
+
+    db.commit()
+
+    return {
+        "message": "Seed data created successfully"
+    }
