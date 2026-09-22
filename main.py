@@ -225,3 +225,30 @@ def get_expenses(
             for expense in expenses
         ]
     }
+
+@app.get("/expenses/total")
+def get_total_expense(
+    employee_id: str,
+    trip_id: str | None = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(Expense).filter(
+        Expense.employee_id == employee_id
+    )
+
+    if trip_id:
+        query = query.filter(
+            Expense.trip_id == trip_id
+        )
+
+    expenses = query.all()
+
+    total = sum(expense.amount for expense in expenses)
+
+    return {
+        "employee_id": employee_id,
+        "trip_id": trip_id,
+        "total_expense": total,
+        "currency": expenses[0].currency if expenses else "INR",
+        "expense_count": len(expenses)
+    }
