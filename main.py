@@ -23,7 +23,15 @@ class ExpenseUpdate(BaseModel):
     expense_date: str | None = None
     description: str | None = None
 
+class TripCreate(BaseModel):
+    employee_id: str
+    destination: str
+    start_date: str
+    end_date: str
+    purpose: str
+
 Base.metadata.create_all(bind=engine)
+
 
 
 @app.get("/")
@@ -391,4 +399,63 @@ def delete_expense(
     return {
         "message": "Expense deleted successfully",
         "expense_id": expense_id
+    }
+
+@app.post("/trips")
+def create_trip(
+    trip: TripCreate,
+    db: Session = Depends(get_db)
+):
+
+    # 1. Check employee
+    employee = (
+        db.query(Employee)
+        .filter(
+            Employee.employee_id == trip.employee_id
+        )
+        .first()
+    )
+
+    if not employee:
+        raise HTTPException(
+            status_code=404,
+            detail="Employee not found"
+        )
+
+    # 2. Validate dates
+    if trip.end_date < trip.start_date:
+        raise HTTPException(
+            status_code=400,
+            detail="End date cannot be before start date"
+        )
+
+    # 3. Generate Trip ID
+    trip_id = f"TRIP-{uuid4().hex[:8].upper()}"
+
+    # 4. Create trip
+    new_trip = Trip(
+        trip_id=trip_id,
+        employee_id=trip.employee_id,
+        destination=trip.destination,
+        start_date=trip.start_date,
+        end_date=trip.end_date,
+        purpose=trip.purpose,
+        status="OPEN"
+    )
+
+    db.add(new_trip)
+    db.commit()
+    db.refresh(new_trip)
+
+    return {
+        "message": "Trip created successfully",
+        "trip": {
+            "trip_id": new_trip.trip_id,
+            "employee_id": new_trip.employee_id,
+            "destination": new_trip.destination,
+            "start_date": new_trip.start_date,
+            "end_date": new_trip.end_date,
+            "purpose": new_trip.purpose,
+            "status": new_trip.status
+        }
     }
